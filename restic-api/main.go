@@ -1,5 +1,3 @@
-//This is a hard fork from the great job done by 
-//http://github.com/yp-engineering/rbd-docker-plugin
 package main
 
 import (
@@ -43,7 +41,7 @@ func main() {
 	options.listenPort = retentionParams(*listenPort)
 	options.listenIp = retentionParams(*listenIp)
 
-	logrus.Infof("====Starting Backy2 REST server %s====", VERSION)
+	logrus.Infof("====Starting Restic REST server %s====", VERSION)
 
 	router := mux.NewRouter()
 	router.HandleFunc("/backups", GetBackups).Methods("GET")
