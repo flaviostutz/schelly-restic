@@ -2,25 +2,32 @@ package main
 
 import (
 	"flag"
-	"strings"
-    "encoding/json"
-    "net/http"
+	// "strings"
+    // "encoding/json"
+	"net/http"
+	"os"
+	"fmt"
+	"encoding/json"
     "github.com/gorilla/mux"
 	"github.com/Sirupsen/logrus"
 )
-
-const VERSION = "1.0.0-beta"
 
 type Options struct {
 	listenPort int
 	listenIp string
 }
 
+type Response struct {
+	id string
+	status string
+	message string
+}
+
 var options = new(Options)
 
 func main() {
 	listenPort    := flag.Int("listen-port", 8080, "REST API server listen port")
-	listenIp      := flag.Int("listen-ip", "", "REST API server listen ip address")
+	listenIp      := flag.String("listen-ip", "0.0.0.0", "REST API server listen ip address")
 	logLevel      := flag.String("log-level", "info", "debug, info, warning or error")
 	flag.Parse()
 
@@ -38,39 +45,74 @@ func main() {
 			logrus.SetLevel(logrus.InfoLevel)
 	}
 
-	options.listenPort = retentionParams(*listenPort)
-	options.listenIp = retentionParams(*listenIp)
+	options.listenPort = *listenPort
+	options.listenIp = *listenIp
 
-	logrus.Infof("====Starting Restic REST server %s====", VERSION)
+	logrus.Info("====Starting Restic REST server====")
 
 	router := mux.NewRouter()
 	router.HandleFunc("/backups", GetBackups).Methods("GET")
 	router.HandleFunc("/backups/{id}", CreateBackup).Methods("POST")
 	router.HandleFunc("/backups/{id}", DeleteBackup).Methods("DELETE")
-    http.ListenAndServe(options.listenIp + ":" + options.listenPort, router)
-
+	listen := fmt.Sprintf("%s:%d", options.listenIp, options.listenPort)
+	logrus.Infof("Listening at %s", listen)
+	err := http.ListenAndServe(listen, router)
+	if err!=nil {
+		logrus.Errorf("Error while listening requests: %s", err)
+		os.Exit(1)
+	}
 }
 
 func GetBackups(w http.ResponseWriter, r *http.Request) {
-    params := mux.Vars(r)
-    for _, item := range people {
-    if item.ID == params["id"]
+	logrus.Debugf("GetBackups r=%s", r)
+	result, err := sh("restic", "snapshots", "--json", "--quiet")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write([]byte(result))
+	logrus.Infof("result: %s", result)
 }
 
 func CreateBackup(w http.ResponseWriter, r *http.Request) {
-    params := mux.Vars(r)
-    var person Person
-    _ = json.NewDecoder(r.Body).Decode(&person)
-    person.ID = params["id"]
-    people = append(people, person)
-    json.NewEncoder(w).Encode(people)
+	logrus.Debugf("CreateBackup r=%s", r)
+	result, err := sh("restic", "backup", "/backup-source")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	logrus.Infof("result: %s", result)
+	response := Response {
+		id: result,
+		status: "done",
+		message: "Backup done",
+	}
+	err1 := json.NewEncoder(w).Encode(&response)
+	if err1 != nil {
+		http.Error(w, err1.Error(), http.StatusInternalServerError)
+		return
+	}
+	logrus.Debugf("Response sent %s", response)
 }
+
 func DeleteBackup(w http.ResponseWriter, r *http.Request) {
-    params := mux.Vars(r)
-    for index, item := range people {
-        if item.ID == params["id"] {
-            people = append(people[:index], people[index+1]...)
-            break
-    }
-    json.NewEncoder(w).Encode(people)
+	logrus.Debugf("DeleteBackup r=%s", r)
+	params := mux.Vars(r)
+	result, err := sh("restic", "forget", params["id"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	logrus.Debugf("result: %s", result)
+	response := Response {
+		id: result,
+		status: "done",
+		message: "Backup done",
+	}
+	err1 := json.NewEncoder(w).Encode(&response)
+	if err1 != nil {
+		http.Error(w, err1.Error(), http.StatusInternalServerError)
+		return
+	}
+	logrus.Debugf("Response sent %s", response)
 }

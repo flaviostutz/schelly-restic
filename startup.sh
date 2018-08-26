@@ -9,7 +9,7 @@ fi
 
 export RESTIC_REPOSITORY=/backup-repo
 
-if [ ! -d "$RESTIC_REPOSITORY/initialized" ]; then
+if [ ! -f "$RESTIC_REPOSITORY/initialized" ]; then
     echo "Initializing new local path repository..."
     restic init
     touch "$RESTIC_REPOSITORY/initialized"

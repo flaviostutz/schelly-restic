@@ -1,12 +1,8 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"os/exec"
-	"os/user"
-	"strconv"
 	"strings"
 	"time"
 	"github.com/Sirupsen/logrus"
