@@ -4,6 +4,7 @@ import (
 	_ "flag"
 	_ "strings"
 	_ "fmt"
+	_ "regexp"
     _ "encoding/json"
 	_ "net/http"
 	"log"
