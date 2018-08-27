@@ -4,8 +4,8 @@ set -e
 
 echo "Starting Restic API..."
 restic-api \
-    --listen-port=$LISTEN_PORT \
     --listen-ip=$LISTEN_IP \
+    --listen-port=$LISTEN_PORT \
     --log-level=$LOG_LEVEL \
     --repo-dir=/backup-repo \
     --source-path=/backup-source

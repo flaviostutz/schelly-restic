@@ -69,14 +69,16 @@ func main() {
 	logrus.Debugf("Checking if Restic repo %s was already initialized", options.repoDir)
 	out1, err1 := execShell("restic snapshots")
 	if err1 != nil {
-		logrus.Debugf("Couldn't access Rest repo. Trying to create it. err=", err1)
+		logrus.Debugf("Couldn't access Restic repo. Trying to create it. err=", err1)
 		out1, err1 = execShell("restic init")
 		if err1 != nil {
-			logrus.Debugf("Error creating restic repo: %s %s", err1, out1)
+			logrus.Debugf("Error creating Restic repo: %s %s", err1, out1)
 			os.Exit(1)
 		} else {
 			logrus.Infof("Restic repo created successfuly")
 		}
+	} else {
+		logrus.Infof("Restic repo already exists and is accessible")
 	}
 
 	router := mux.NewRouter()
