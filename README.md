@@ -9,14 +9,6 @@ This exposes the common functions of Restic with REST APIs. Originally created t
 
   - ```POST /backups```
     - When invoked, triggers a new backup
-    - Request body: json 
-      
-      ```
-        {
-           source: [path to file or dir],
-           name: [name of the collection]
-        }
-      ```
     - Response body: json 
      
       ```
@@ -34,9 +26,7 @@ This exposes the common functions of Restic with REST APIs. Originally created t
       
     - Status code 201 if created successfuly
 
-  - ```GET {webhook-url}/{backup-id}```
-    - Invoked when Schelly wants to query a specific backup instance
-    - Request header: ```{webhook-headers}```
+  - ```GET /backups/{backup-id}```
     - Response body: json
     
        ```
@@ -48,10 +38,7 @@ This exposes the common functions of Restic with REST APIs. Originally created t
        ```
     - Status code: 200 if found, 404 if not found
 
-  - ```DELETE {webhook-url}/{backup-id}```
-    - Invoked when Schelly wants to trigger a new backup
-    - Request body: json ```{webhook-delete-body}```
-    - Request header: ```{webhook-headers}```
+  - ```DELETE /backups/{backup-id}```
     - Response body: json 
      
       ```
