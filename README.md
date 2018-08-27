@@ -1,5 +1,7 @@
-# restic-api
-This exposes the common functions of Restic with REST APIs. Originally created to be used with Schelly.
+# schelly-restic
+This exposes the common functions of Restic with Schelly REST APIs so that it can be used as a backup backend for Schelly (webhook).
+
+See more at http://github.com/flaviostutz/schelly
 
 # Usage
 
@@ -11,7 +13,7 @@ version: '3.5'
 services:
 
   restic-api:
-    image: flaviostutz/restic-api
+    image: flaviostutz/schelly-restic
     ports:
       - 8080:8080
     environment:
