@@ -9,3 +9,6 @@ services:
     environment:
       - RESTIC_PASSWORD=123
       - LOG_LEVEL=debug
+      - PRE_BACKUP_COMMAND=/pre-test.sh
+      - POST_BACKUP_COMMAND=/post-test.sh
+

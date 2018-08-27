@@ -2,8 +2,6 @@ package main
 
 import (
 	"flag"
-	// "strings"
-    // "encoding/json"
 	"net/http"
 	"regexp"
 	"os"
@@ -16,6 +14,10 @@ import (
 type Options struct {
 	listenPort int
 	listenIp string
+	sourcePath string
+	repoDir string
+	preBackupCommand string
+	postBackupCommand string
 }
 
 type Response struct {
@@ -27,9 +29,13 @@ type Response struct {
 var options = new(Options)
 
 func main() {
-	listenPort    := flag.Int("listen-port", 8080, "REST API server listen port")
-	listenIp      := flag.String("listen-ip", "0.0.0.0", "REST API server listen ip address")
-	logLevel      := flag.String("log-level", "info", "debug, info, warning or error")
+	listenPort         := flag.Int("listen-port", 8080, "REST API server listen port")
+	listenIp           := flag.String("listen-ip", "0.0.0.0", "REST API server listen ip address")
+	logLevel           := flag.String("log-level", "info", "debug, info, warning or error")
+	sourcePath         := flag.String("source-path", "/backup-source", "Backup source path")
+	repoDir            := flag.String("repo-dir", "/backup-repo", "Restic repository of backups")
+	preBackupCommand   := flag.String("pre-backup-command", "", "Command to be executed before running the backup")
+	postBackupCommand  := flag.String("post-backup-command", "", "Command to be executed after running the backup")
 	flag.Parse()
 
 	switch *logLevel {
@@ -46,10 +52,32 @@ func main() {
 			logrus.SetLevel(logrus.InfoLevel)
 	}
 
+	if os.Getenv("RESTIC_PASSWORD") == "" {
+		logrus.Error("You must set environment variable RESTIC_PASSWORD to a non empty value")
+		os.Exit(1)
+	}
+
 	options.listenPort = *listenPort
 	options.listenIp = *listenIp
+	options.repoDir = *repoDir
+	options.sourcePath = *sourcePath
+	options.preBackupCommand = *preBackupCommand
+	options.postBackupCommand = *postBackupCommand
 
 	logrus.Info("====Starting Restic REST server====")
+
+	logrus.Debugf("Checking if Restic repo %s was already initialized", options.repoDir)
+	out1, err1 := execShell("restic snapshots")
+	if err1 != nil {
+		logrus.Debugf("Couldn't access Rest repo. Trying to create it. err=", err1)
+		out1, err1 = execShell("restic init")
+		if err1 != nil {
+			logrus.Debugf("Error creating restic repo: %s %s", err1, out1)
+			os.Exit(1)
+		} else {
+			logrus.Infof("Restic repo created successfuly")
+		}
+	}
 
 	router := mux.NewRouter()
 	router.HandleFunc("/backups", GetBackups).Methods("GET")
@@ -67,7 +95,7 @@ func main() {
 
 func GetBackups(w http.ResponseWriter, r *http.Request) {
 	logrus.Debugf("GetBackups r=%s", r)
-	result, err := sh("restic", "snapshots", "--json", "--quiet")
+	result, err := sh("restic", "snapshots", "--json", "--quiet", "-r", options.repoDir)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -77,7 +105,7 @@ func GetBackups(w http.ResponseWriter, r *http.Request) {
 		result = "{}"
 	}
 	w.Write([]byte(result))
-	logrus.Infof("result: %s", result)
+	logrus.Debugf("result: %s", result)
 }
 
 func GetBackup(w http.ResponseWriter, r *http.Request) {
@@ -103,8 +131,22 @@ func GetBackup(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateBackup(w http.ResponseWriter, r *http.Request) {
-	logrus.Debugf("CreateBackup r=%s", r)
-	result, err := sh("restic", "backup", "/backup-source")
+	logrus.Infof("CreateBackup r=%s", r)
+
+	if options.preBackupCommand != "" {
+		logrus.Infof("Running pre-backup command '%s'", options.preBackupCommand)
+		out0, err0 := execShell(options.preBackupCommand)
+		logrus.Debugf("Output: %s", out0)
+		if err0 != nil {
+			logrus.Warnf("Failed to run pre-backup command: '%s'", err0)
+			http.Error(w, err0.Error(), http.StatusInternalServerError)
+			return
+		}
+		logrus.Debug("Pre-backup command success")
+	}
+
+	logrus.Infof("Calling Restic...")
+	result, err := sh("restic", "backup", "/backup-source", "-r", options.repoDir)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -112,22 +154,43 @@ func CreateBackup(w http.ResponseWriter, r *http.Request) {
 	logrus.Debugf("result: %s", result)
 	rex, _ := regexp.Compile("snapshot ([0-9a-zA-z]+) saved")
 	id := rex.FindStringSubmatch(result)
-	if len(id) != 2 {
+	success := (len(id) == 2)
+	if !success {
+		logrus.Warnf("Snapshot not created. result=%s", result)
+	}
+
+	if options.postBackupCommand != "" {
+		logrus.Infof("Running post-backup command '%s'...", options.postBackupCommand)
+		out1, err1 := execShell(options.preBackupCommand)
+		logrus.Debugf("Output: %s", out1)
+		if err1 != nil {
+			logrus.Warnf("Failed to run post-backup command: %s", err1)
+			http.Error(w, err1.Error(), http.StatusInternalServerError)
+			return
+		}
+		logrus.Debug("Post-backup command success")
+	}
+
+	if success {
+		resp := Response {
+			Id: id[1],
+			Status: "done",
+			Message: result,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		err1 := json.NewEncoder(w).Encode(resp)
+		if err1 != nil {
+			http.Error(w, err1.Error(), http.StatusInternalServerError)
+			return
+		}
+		logrus.Debugf("Response sent %s", resp)
+		logrus.Infof("Backup success")
+
+	} else {
+		logrus.Infof("Backup error")
 		http.Error(w, "Couldn't find returned id from response", http.StatusInternalServerError)
-		return
 	}
-	resp := Response {
-		Id: id[1],
-		Status: "done",
-		Message: result,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	err1 := json.NewEncoder(w).Encode(resp)
-	if err1 != nil {
-		http.Error(w, err1.Error(), http.StatusInternalServerError)
-		return
-	}
-	logrus.Debugf("Response sent %s", resp)
+
 }
 
 func DeleteBackup(w http.ResponseWriter, r *http.Request) {
@@ -145,7 +208,7 @@ func DeleteBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logrus.Debugf("Snapshot %s found. Proceeding to deletion", params["id"])
-	result, err := sh("restic", "forget", params["id"])
+	result, err := sh("restic", "forget", params["id"], "-r", options.repoDir)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -180,7 +243,7 @@ func DeleteBackup(w http.ResponseWriter, r *http.Request) {
 }
 
 func findBackup(id string) (Response, error) {
-	res0, err0 := sh("restic", "snapshots", id)
+	res0, err0 := sh("restic", "snapshots", id, "-r", options.repoDir)
 	if err0 != nil {
 		return Response{}, err0
 	}

@@ -2,22 +2,13 @@
 set -e
 # set -x
 
-if [ "$RESTIC_PASSWORD" == "" ]; then
-    echo "ENV RESTIC_PASSWORD is mandatory"
-    exit 1
-fi
-
-export RESTIC_REPOSITORY=/backup-repo
-
-if [ ! -f "$RESTIC_REPOSITORY/initialized" ]; then
-    echo "Initializing new local path repository..."
-    restic init
-    touch "$RESTIC_REPOSITORY/initialized"
-    echo "Repo initialized"
-fi
-
 echo "Starting Restic API..."
 restic-api \
     --listen-port=$LISTEN_PORT \
     --listen-ip=$LISTEN_IP \
-    --log-level=$LOG_LEVEL
+    --log-level=$LOG_LEVEL \
+    --repo-dir=/backup-repo \
+    --source-path=/backup-source
+    --pre-backup-command=$PRE_COMMAND \
+    --post-backup-command=$POST_COMMAND
+

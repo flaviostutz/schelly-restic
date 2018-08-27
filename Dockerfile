@@ -23,8 +23,12 @@ ENV RESTIC_PASSWORD ''
 ENV LISTEN_PORT 8080
 ENV LISTEN_IP '0.0.0.0'
 ENV LOG_LEVEL 'debug'
+ENV PRE_BACKUP_COMMAND ''
+ENV POST_BACKUP_COMMAND ''
 
 COPY --from=BUILD /go/bin/* /bin/
 ADD startup.sh /
+ADD pre-test.sh /
+ADD post-test.sh /
 
 CMD [ "/startup.sh" ]

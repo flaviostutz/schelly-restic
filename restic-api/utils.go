@@ -12,11 +12,22 @@ var (
 	defaultShellTimeout = 2 * 60 * time.Second
 )
 
+func execShell(command string) (string, error) {
+	logrus.Debugf("execshell: '%s'", command)
+	cmd := exec.Command("sh", "-c", command)
+	stdoutStderr, err := cmd.CombinedOutput()
+	if err != nil {
+		logrus.Errorf("Error executing command '%s': '%s'", command, err)
+		return "", err
+	} else {
+		return string(stdoutStderr), nil
+	}
+}
+
 // sh is a simple os.exec Command tool, returns trimmed string output
 func sh(name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	logrus.Debugf("sh CMD: %q", cmd)
-	// TODO: capture and output STDERR to logfile?
 	out, err := cmd.Output()
 	return strings.Trim(string(out), " \n"), err
 }
