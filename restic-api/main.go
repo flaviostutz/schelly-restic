@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"os"
 	"fmt"
-	"strings"
 	"encoding/json"
     "github.com/gorilla/mux"
 	"github.com/Sirupsen/logrus"
@@ -55,6 +54,7 @@ func main() {
 	router := mux.NewRouter()
 	router.HandleFunc("/backups", GetBackups).Methods("GET")
 	router.HandleFunc("/backups", CreateBackup).Methods("POST")
+	router.HandleFunc("/backups/{id}", GetBackup).Methods("GET")
 	router.HandleFunc("/backups/{id}", DeleteBackup).Methods("DELETE")
 	listen := fmt.Sprintf("%s:%d", options.listenIp, options.listenPort)
 	logrus.Infof("Listening at %s", listen)
@@ -78,6 +78,28 @@ func GetBackups(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Write([]byte(result))
 	logrus.Infof("result: %s", result)
+}
+
+func GetBackup(w http.ResponseWriter, r *http.Request) {
+	logrus.Debugf("GetBackup r=%s", r)
+	params := mux.Vars(r)
+
+	res, err := findBackup(params["id"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if res.Id == "" {
+		http.Error(w, fmt.Sprintf("Snapshot %s not found",params["id"]), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	err1 := json.NewEncoder(w).Encode(res)
+	if err1 != nil {
+		http.Error(w, err1.Error(), http.StatusInternalServerError)
+		return
+	}
+	logrus.Debugf("Response sent %s", res)
 }
 
 func CreateBackup(w http.ResponseWriter, r *http.Request) {
@@ -112,19 +134,17 @@ func DeleteBackup(w http.ResponseWriter, r *http.Request) {
 	logrus.Debugf("DeleteBackup r=%s", r)
 	params := mux.Vars(r)
 
-	res0, err0 := sh("restic", "snapshots", params["id"])
-	if err0 != nil {
-		http.Error(w, err0.Error(), http.StatusInternalServerError)
+	res, err := findBackup(params["id"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logrus.Debugf("Query snapshots result: %s", res0)
-	if strings.Contains(res0, "it is not a snapshot id") || strings.Contains(res0, "0 snapshots") {
+	if res.Id == "" {
 		http.Error(w, fmt.Sprintf("Snapshot %s not found",params["id"]), http.StatusNotFound)
 		return
 	}
 
-	logrus.Debugf("Snapshot exists")
-
+	logrus.Debugf("Snapshot %s found. Proceeding to deletion", params["id"])
 	result, err := sh("restic", "forget", params["id"])
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -157,4 +177,25 @@ func DeleteBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logrus.Debugf("Response sent %s", response)
+}
+
+func findBackup(id string) (Response, error) {
+	res0, err0 := sh("restic", "snapshots", id)
+	if err0 != nil {
+		return Response{}, err0
+	}
+	logrus.Debugf("Query snapshots result: %s", res0)
+
+	rex, _ := regexp.Compile("-\n([0-9a-z]{4,16})")
+	id0 := rex.FindStringSubmatch(res0)
+	if len(id0) != 2 {
+		logrus.Debug("Coudn't find backup id %s", id0)
+		return Response{}, nil
+	}
+
+	logrus.Debugf("Snapshot %s found", id0)
+	return Response {
+		Id: id0[1],
+		Status: "active",
+	}, nil
 }
