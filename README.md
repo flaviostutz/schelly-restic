@@ -3,7 +3,21 @@ This exposes the common functions of Restic with REST APIs. Originally created t
 
 # Usage
 
+docker-compose .yml
 
+```
+version: '3.5'
+
+services:
+
+  restic-api:
+    image: flaviostutz/restic-api
+    ports:
+      - 8080:8080
+    environment:
+      - RESTIC_PASSWORD=123
+      - LOG_LEVEL=debug
+```
 
 # REST Endpoints
 
