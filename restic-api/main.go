@@ -67,12 +67,12 @@ func main() {
 	logrus.Info("====Starting Restic REST server====")
 
 	logrus.Debugf("Checking if Restic repo %s was already initialized", options.repoDir)
-	out1, err1 := execShell("restic snapshots")
-	if err1 != nil {
-		logrus.Debugf("Couldn't access Restic repo. Trying to create it. err=", err1)
-		out1, err1 = execShell("restic init")
-		if err1 != nil {
-			logrus.Debugf("Error creating Restic repo: %s %s", err1, out1)
+	result, err := sh("restic", "snapshots", "-r", options.repoDir)
+	if err != nil {
+		logrus.Debugf("Couldn't access Restic repo. Trying to create it. err=", err)
+		_, err := sh("restic", "init", "-r", options.repoDir)
+		if err != nil {
+			logrus.Debugf("Error creating Restic repo: %s %s", err, result)
 			os.Exit(1)
 		} else {
 			logrus.Infof("Restic repo created successfuly")
@@ -88,7 +88,7 @@ func main() {
 	router.HandleFunc("/backups/{id}", DeleteBackup).Methods("DELETE")
 	listen := fmt.Sprintf("%s:%d", options.listenIp, options.listenPort)
 	logrus.Infof("Listening at %s", listen)
-	err := http.ListenAndServe(listen, router)
+	err = http.ListenAndServe(listen, router)
 	if err!=nil {
 		logrus.Errorf("Error while listening requests: %s", err)
 		os.Exit(1)
@@ -124,9 +124,9 @@ func GetBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	err1 := json.NewEncoder(w).Encode(res)
-	if err1 != nil {
-		http.Error(w, err1.Error(), http.StatusInternalServerError)
+	err = json.NewEncoder(w).Encode(res)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	logrus.Debugf("Response sent %s", res)
@@ -137,11 +137,11 @@ func CreateBackup(w http.ResponseWriter, r *http.Request) {
 
 	if options.preBackupCommand != "" {
 		logrus.Infof("Running pre-backup command '%s'", options.preBackupCommand)
-		out0, err0 := execShell(options.preBackupCommand)
-		logrus.Debugf("Output: %s", out0)
-		if err0 != nil {
-			logrus.Warnf("Failed to run pre-backup command: '%s'", err0)
-			http.Error(w, err0.Error(), http.StatusInternalServerError)
+		result, err := execShell(options.preBackupCommand)
+		logrus.Debugf("Output: %s", result)
+		if err != nil {
+			logrus.Warnf("Failed to run pre-backup command: '%s'", result)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		logrus.Debug("Pre-backup command success")
@@ -163,11 +163,11 @@ func CreateBackup(w http.ResponseWriter, r *http.Request) {
 
 	if options.postBackupCommand != "" {
 		logrus.Infof("Running post-backup command '%s'...", options.postBackupCommand)
-		out1, err1 := execShell(options.preBackupCommand)
-		logrus.Debugf("Output: %s", out1)
-		if err1 != nil {
-			logrus.Warnf("Failed to run post-backup command: %s", err1)
-			http.Error(w, err1.Error(), http.StatusInternalServerError)
+		result, err = execShell(options.preBackupCommand)
+		logrus.Debugf("Output: %s", result)
+		if err != nil {
+			logrus.Warnf("Failed to run post-backup command: %s", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		logrus.Debug("Post-backup command success")
@@ -180,9 +180,9 @@ func CreateBackup(w http.ResponseWriter, r *http.Request) {
 			Message: result,
 		}
 		w.Header().Set("Content-Type", "application/json")
-		err1 := json.NewEncoder(w).Encode(resp)
-		if err1 != nil {
-			http.Error(w, err1.Error(), http.StatusInternalServerError)
+		err = json.NewEncoder(w).Encode(resp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		logrus.Debugf("Response sent %s", resp)
@@ -199,9 +199,9 @@ func DeleteBackup(w http.ResponseWriter, r *http.Request) {
 	logrus.Debugf("DeleteBackup r=%s", r)
 	params := mux.Vars(r)
 
-	res, err := findBackup(params["id"])
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	res, err0 := findBackup(params["id"])
+	if err0 != nil {
+		http.Error(w, err0.Error(), http.StatusInternalServerError)
 		return
 	}
 	if res.Id == "" {
@@ -236,23 +236,23 @@ func DeleteBackup(w http.ResponseWriter, r *http.Request) {
 		Message: result,
 	}
 	w.Header().Set("Content-Type", "application/json")
-	err1 := json.NewEncoder(w).Encode(response)
-	if err1 != nil {
-		http.Error(w, err1.Error(), http.StatusInternalServerError)
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	logrus.Debugf("Response sent %s", response)
 }
 
 func findBackup(id string) (Response, error) {
-	res0, err0 := sh("restic", "snapshots", id, "-r", options.repoDir)
-	if err0 != nil {
-		return Response{}, err0
+	result, err := sh("restic", "snapshots", id, "-r", options.repoDir)
+	if err != nil {
+		return Response{}, err
 	}
-	logrus.Debugf("Query snapshots result: %s", res0)
+	logrus.Debugf("Query snapshots result: %s", result)
 
 	rex, _ := regexp.Compile("-\n([0-9a-z]{4,16})")
-	id0 := rex.FindStringSubmatch(res0)
+	id0 := rex.FindStringSubmatch(result)
 	if len(id0) != 2 {
 		logrus.Debug("Coudn't find backup id %s", id0)
 		return Response{}, nil
