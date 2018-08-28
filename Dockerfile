@@ -3,12 +3,12 @@ FROM golang:1.10 AS BUILD
 #doing dependency build separated from source build optimizes time for developer, but is not required
 #install external dependencies first
 # ADD go-plugins-helpers/Gopkg.toml $GOPATH/src/go-plugins-helpers/
-ADD /main.go $GOPATH/src/restic-api/main.go
-RUN go get -v restic-api
+ADD /main.go $GOPATH/src/schelly-restic/main.go
+RUN go get -v schelly-restic
 
 #now build source code
-ADD restic-api $GOPATH/src/restic-api
-RUN go get -v restic-api
+ADD schelly-restic $GOPATH/src/schelly-restic
+RUN go get -v schelly-restic
 
 
 FROM ubuntu:18.04

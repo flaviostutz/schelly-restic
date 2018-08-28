@@ -3,7 +3,7 @@ set -e
 # set -x
 
 echo "Starting Restic API..."
-restic-api \
+schelly-restic \
     --listen-ip=$LISTEN_IP \
     --listen-port=$LISTEN_PORT \
     --log-level=$LOG_LEVEL \

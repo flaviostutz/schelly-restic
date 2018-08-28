@@ -1,55 +1,56 @@
 package main
 
 import (
-	"flag"
-	"net/http"
-	"regexp"
-	"os"
-	"fmt"
 	"encoding/json"
-    "github.com/gorilla/mux"
+	"flag"
+	"fmt"
+	"net/http"
+	"os"
+	"regexp"
+
 	"github.com/Sirupsen/logrus"
+	"github.com/gorilla/mux"
 )
 
 type Options struct {
-	listenPort int
-	listenIp string
-	sourcePath string
-	repoDir string
-	preBackupCommand string
+	listenPort        int
+	listenIp          string
+	sourcePath        string
+	repoDir           string
+	preBackupCommand  string
 	postBackupCommand string
 }
 
 type Response struct {
-	Id string `json:"id",omitempty`
-	Status string `json:"status",omitempty`
+	Id      string `json:"id",omitempty`
+	Status  string `json:"status",omitempty`
 	Message string `json:"message",omitempty`
 }
 
 var options = new(Options)
 
 func main() {
-	listenPort         := flag.Int("listen-port", 8080, "REST API server listen port")
-	listenIp           := flag.String("listen-ip", "0.0.0.0", "REST API server listen ip address")
-	logLevel           := flag.String("log-level", "info", "debug, info, warning or error")
-	sourcePath         := flag.String("source-path", "/backup-source", "Backup source path")
-	repoDir            := flag.String("repo-dir", "/backup-repo", "Restic repository of backups")
-	preBackupCommand   := flag.String("pre-backup-command", "", "Command to be executed before running the backup")
-	postBackupCommand  := flag.String("post-backup-command", "", "Command to be executed after running the backup")
+	listenPort := flag.Int("listen-port", 8080, "REST API server listen port")
+	listenIp := flag.String("listen-ip", "0.0.0.0", "REST API server listen ip address")
+	logLevel := flag.String("log-level", "info", "debug, info, warning or error")
+	sourcePath := flag.String("source-path", "/backup-source", "Backup source path")
+	repoDir := flag.String("repo-dir", "/backup-repo", "Restic repository of backups")
+	preBackupCommand := flag.String("pre-backup-command", "", "Command to be executed before running the backup")
+	postBackupCommand := flag.String("post-backup-command", "", "Command to be executed after running the backup")
 	flag.Parse()
 
 	switch *logLevel {
-		case "debug":
-			logrus.SetLevel(logrus.DebugLevel)
-			break;
-		case "warning":
-			logrus.SetLevel(logrus.WarnLevel)
-			break;
-		case "error":
-			logrus.SetLevel(logrus.ErrorLevel)
-			break;
-		default:
-			logrus.SetLevel(logrus.InfoLevel)
+	case "debug":
+		logrus.SetLevel(logrus.DebugLevel)
+		break
+	case "warning":
+		logrus.SetLevel(logrus.WarnLevel)
+		break
+	case "error":
+		logrus.SetLevel(logrus.ErrorLevel)
+		break
+	default:
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 
 	if os.Getenv("RESTIC_PASSWORD") == "" {
@@ -89,7 +90,7 @@ func main() {
 	listen := fmt.Sprintf("%s:%d", options.listenIp, options.listenPort)
 	logrus.Infof("Listening at %s", listen)
 	err = http.ListenAndServe(listen, router)
-	if err!=nil {
+	if err != nil {
 		logrus.Errorf("Error while listening requests: %s", err)
 		os.Exit(1)
 	}
@@ -120,7 +121,7 @@ func GetBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if res.Id == "" {
-		http.Error(w, fmt.Sprintf("Snapshot %s not found",params["id"]), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("Snapshot %s not found", params["id"]), http.StatusNotFound)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -174,12 +175,13 @@ func CreateBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if success {
-		resp := Response {
-			Id: id[1],
-			Status: "done",
+		resp := Response{
+			Id:      id[1],
+			Status:  "done",
 			Message: result,
 		}
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
 		err = json.NewEncoder(w).Encode(resp)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -205,7 +207,7 @@ func DeleteBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if res.Id == "" {
-		http.Error(w, fmt.Sprintf("Snapshot %s not found",params["id"]), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("Snapshot %s not found", params["id"]), http.StatusNotFound)
 		return
 	}
 
@@ -230,9 +232,9 @@ func DeleteBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := Response {
-		Id: id[1],
-		Status: "deleted",
+	response := Response{
+		Id:      id[1],
+		Status:  "deleted",
 		Message: result,
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -259,8 +261,8 @@ func findBackup(id string) (Response, error) {
 	}
 
 	logrus.Debugf("Snapshot %s found", id0)
-	return Response {
-		Id: id0[1],
+	return Response{
+		Id:     id0[1],
 		Status: "active",
 	}, nil
 }
