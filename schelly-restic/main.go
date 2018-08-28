@@ -194,7 +194,6 @@ func CreateBackup(w http.ResponseWriter, r *http.Request) {
 		logrus.Infof("Backup error")
 		http.Error(w, "Couldn't find returned id from response", http.StatusInternalServerError)
 	}
-
 }
 
 func DeleteBackup(w http.ResponseWriter, r *http.Request) {
