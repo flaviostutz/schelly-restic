@@ -177,7 +177,7 @@ func CreateBackup(w http.ResponseWriter, r *http.Request) {
 	if success {
 		resp := Response{
 			Id:      id[1],
-			Status:  "done",
+			Status:  "available",
 			Message: result,
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -262,6 +262,6 @@ func findBackup(id string) (Response, error) {
 	logrus.Debugf("Snapshot %s found", id0)
 	return Response{
 		Id:     id0[1],
-		Status: "active",
+		Status: "available",
 	}, nil
 }
