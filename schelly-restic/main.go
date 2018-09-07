@@ -14,7 +14,7 @@ import (
 
 type Options struct {
 	listenPort        int
-	listenIp          string
+	listenIP          string
 	sourcePath        string
 	repoDir           string
 	preBackupCommand  string
@@ -31,7 +31,7 @@ var options = new(Options)
 
 func main() {
 	listenPort := flag.Int("listen-port", 8080, "REST API server listen port")
-	listenIp := flag.String("listen-ip", "0.0.0.0", "REST API server listen ip address")
+	listenIP := flag.String("listen-ip", "0.0.0.0", "REST API server listen ip address")
 	logLevel := flag.String("log-level", "info", "debug, info, warning or error")
 	sourcePath := flag.String("source-path", "/backup-source", "Backup source path")
 	repoDir := flag.String("repo-dir", "/backup-repo", "Restic repository of backups")
@@ -59,7 +59,7 @@ func main() {
 	}
 
 	options.listenPort = *listenPort
-	options.listenIp = *listenIp
+	options.listenIP = *listenIP
 	options.repoDir = *repoDir
 	options.sourcePath = *sourcePath
 	options.preBackupCommand = *preBackupCommand
@@ -87,7 +87,7 @@ func main() {
 	router.HandleFunc("/backups", CreateBackup).Methods("POST")
 	router.HandleFunc("/backups/{id}", GetBackup).Methods("GET")
 	router.HandleFunc("/backups/{id}", DeleteBackup).Methods("DELETE")
-	listen := fmt.Sprintf("%s:%d", options.listenIp, options.listenPort)
+	listen := fmt.Sprintf("%s:%d", options.listenIP, options.listenPort)
 	logrus.Infof("Listening at %s", listen)
 	err = http.ListenAndServe(listen, router)
 	if err != nil {
@@ -202,6 +202,7 @@ func DeleteBackup(w http.ResponseWriter, r *http.Request) {
 
 	res, err0 := findBackup(params["id"])
 	if err0 != nil {
+		logrus.Debugf("Backup %s not found for removal", params["id"])
 		http.Error(w, err0.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -255,7 +256,7 @@ func findBackup(id string) (Response, error) {
 	rex, _ := regexp.Compile("-\n([0-9a-z]{4,16})")
 	id0 := rex.FindStringSubmatch(result)
 	if len(id0) != 2 {
-		logrus.Debug("Coudn't find backup id %s", id0)
+		logrus.Debug("Couldn't find backup id in response '%'", id0, result)
 		return Response{}, nil
 	}
 
