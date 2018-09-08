@@ -19,8 +19,10 @@ RUN apt-get install -y restic
 VOLUME [ "/backup-source" ]
 VOLUME [ "/backup-repo" ]
 
+EXPOSE 7070
+
 ENV RESTIC_PASSWORD ''
-ENV LISTEN_PORT 8080
+ENV LISTEN_PORT 7070
 ENV LISTEN_IP '0.0.0.0'
 ENV LOG_LEVEL 'debug'
 ENV PRE_BACKUP_COMMAND ''

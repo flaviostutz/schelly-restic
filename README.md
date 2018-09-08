@@ -15,7 +15,7 @@ services:
   restic-api:
     image: flaviostutz/schelly-restic
     ports:
-      - 8080:8080
+      - 7070:7070
     environment:
       - RESTIC_PASSWORD=123
       - LOG_LEVEL=debug
