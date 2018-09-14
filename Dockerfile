@@ -25,12 +25,14 @@ ENV RESTIC_PASSWORD ''
 ENV LISTEN_PORT 7070
 ENV LISTEN_IP '0.0.0.0'
 ENV LOG_LEVEL 'debug'
-ENV PRE_BACKUP_COMMAND '/pre-backup.sh'
-ENV POST_BACKUP_COMMAND '/post-backup.sh'
+
+ENV PRE_POST_TIMEOUT '7200'
+ENV PRE_BACKUP_COMMAND ''
+ENV POST_BACKUP_COMMAND ''
+ENV SOURCE_DATA_PATH '/backup-source'
+ENV TARGET_DATA_PATH '/backup-repo'
 
 COPY --from=BUILD /go/bin/* /bin/
 ADD startup.sh /
-ADD pre-backup.sh /
-ADD post-backup.sh /
 
 CMD [ "/startup.sh" ]

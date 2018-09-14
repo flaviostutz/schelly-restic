@@ -1,19 +1,21 @@
 package main
 
 import (
+	_ "encoding/json"
 	_ "flag"
-	_ "strings"
 	_ "fmt"
 	_ "io/ioutil"
-	_ "regexp"
-    _ "encoding/json"
-	_ "net/http"
 	"log"
+	_ "net/http"
 	_ "os"
-    _ "github.com/gorilla/mux"
+	_ "regexp"
+	_ "strings"
+
 	_ "github.com/Sirupsen/logrus"
+	_ "github.com/flaviostutz/schelly-webhook/schellyhook"
+	_ "github.com/gorilla/mux"
 )
 
 func main() {
-	log.Print("Should not start this class")
+	log.Print("Should not start this class.")
 }

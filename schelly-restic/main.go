@@ -1,158 +1,76 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
-	"net/http"
+	"io/ioutil"
 	"os"
 	"regexp"
+	"strings"
+	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/gorilla/mux"
+	"github.com/flaviostutz/schelly-webhook/schellyhook"
 )
 
-type Options struct {
-	listenPort        int
-	listenIP          string
-	sourcePath        string
-	repoDir           string
-	preBackupCommand  string
-	postBackupCommand string
-}
+var sourcePath *string
+var repoDir *string
 
-type Response struct {
-	Id      string `json:"id",omitempty`
-	Status  string `json:"status",omitempty`
-	Message string `json:"message",omitempty`
+//ResticBackuper sample backuper
+type ResticBackuper struct {
 }
-
-var options = new(Options)
 
 func main() {
-	listenPort := flag.Int("listen-port", 8080, "REST API server listen port")
-	listenIP := flag.String("listen-ip", "0.0.0.0", "REST API server listen ip address")
-	logLevel := flag.String("log-level", "info", "debug, info, warning or error")
-	sourcePath := flag.String("source-path", "/backup-source", "Backup source path")
-	repoDir := flag.String("repo-dir", "/backup-repo", "Restic repository of backups")
-	preBackupCommand := flag.String("pre-backup-command", "", "Command to be executed before running the backup")
-	postBackupCommand := flag.String("post-backup-command", "", "Command to be executed after running the backup")
-	flag.Parse()
-
-	switch *logLevel {
-	case "debug":
-		logrus.SetLevel(logrus.DebugLevel)
-		break
-	case "warning":
-		logrus.SetLevel(logrus.WarnLevel)
-		break
-	case "error":
-		logrus.SetLevel(logrus.ErrorLevel)
-		break
-	default:
-		logrus.SetLevel(logrus.InfoLevel)
-	}
-
-	if os.Getenv("RESTIC_PASSWORD") == "" {
-		logrus.Error("You must set environment variable RESTIC_PASSWORD to a non empty value")
-		os.Exit(1)
-	}
-
-	options.listenPort = *listenPort
-	options.listenIP = *listenIP
-	options.repoDir = *repoDir
-	options.sourcePath = *sourcePath
-	options.preBackupCommand = *preBackupCommand
-	options.postBackupCommand = *postBackupCommand
-
 	logrus.Info("====Starting Restic REST server====")
 
-	logrus.Debugf("Checking if Restic repo %s was already initialized", options.repoDir)
-	result, err := sh("restic", "snapshots", "-r", options.repoDir)
+	resticBackuper := ResticBackuper{}
+	err := schellyhook.Initialize(resticBackuper)
+	if err != nil {
+		logrus.Errorf("Error initializating Schellyhook. err=%s", err)
+		os.Exit(1)
+	}
+}
+
+//RegisterFlags register command line flags
+func (sb ResticBackuper) RegisterFlags() error {
+	sourcePath = flag.String("source-path", "/backup-source", "Backup source path")
+	repoDir = flag.String("repo-dir", "/backup-repo", "Restic repository of backups")
+	return nil
+}
+
+//Init initialize
+func (sb ResticBackuper) Init() error {
+	err := mkDirs(baseIDDir())
+	if err != nil {
+		logrus.Errorf("Couldn't create id references. err=%s", err)
+		return err
+	}
+
+	logrus.Debugf("Checking if Restic repo %s was already initialized", *repoDir)
+	result, err := schellyhook.ExecShell("restic snapshots -r " + *repoDir)
 	if err != nil {
 		logrus.Debugf("Couldn't access Restic repo. Trying to create it. err=", err)
-		_, err := sh("restic", "init", "-r", options.repoDir)
+		_, err := schellyhook.ExecShell("restic init -r " + *repoDir)
 		if err != nil {
 			logrus.Debugf("Error creating Restic repo: %s %s", err, result)
-			os.Exit(1)
+			return err
 		} else {
 			logrus.Infof("Restic repo created successfuly")
 		}
 	} else {
 		logrus.Infof("Restic repo already exists and is accessible")
 	}
-
-	router := mux.NewRouter()
-	router.HandleFunc("/backups", GetBackups).Methods("GET")
-	router.HandleFunc("/backups", CreateBackup).Methods("POST")
-	router.HandleFunc("/backups/{id}", GetBackup).Methods("GET")
-	router.HandleFunc("/backups/{id}", DeleteBackup).Methods("DELETE")
-	listen := fmt.Sprintf("%s:%d", options.listenIP, options.listenPort)
-	logrus.Infof("Listening at %s", listen)
-	err = http.ListenAndServe(listen, router)
-	if err != nil {
-		logrus.Errorf("Error while listening requests: %s", err)
-		os.Exit(1)
-	}
+	return nil
 }
 
-func GetBackups(w http.ResponseWriter, r *http.Request) {
-	logrus.Debugf("GetBackups r=%s", r)
-	result, err := sh("restic", "snapshots", "--json", "--quiet", "-r", options.repoDir)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if result == "null" {
-		result = "{}"
-	}
-	w.Write([]byte(result))
-	logrus.Debugf("result: %s", result)
-}
-
-func GetBackup(w http.ResponseWriter, r *http.Request) {
-	logrus.Debugf("GetBackup r=%s", r)
-	params := mux.Vars(r)
-
-	res, err := findBackup(params["id"])
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if res.Id == "" {
-		http.Error(w, fmt.Sprintf("Snapshot %s not found", params["id"]), http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(res)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	logrus.Debugf("Response sent %s", res)
-}
-
-func CreateBackup(w http.ResponseWriter, r *http.Request) {
-	logrus.Infof("CreateBackup r=%s", r)
-
-	if options.preBackupCommand != "" {
-		logrus.Infof("Running pre-backup command '%s'", options.preBackupCommand)
-		result, err := execShell(options.preBackupCommand)
-		logrus.Debugf("Output: %s", result)
-		if err != nil {
-			logrus.Warnf("Failed to run pre-backup command: '%s'", result)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		logrus.Debug("Pre-backup command success")
-	}
+//CreateNewBackup creates a new backup
+func (sb ResticBackuper) CreateNewBackup(apiID string, timeout time.Duration, shellContext *schellyhook.ShellContext) error {
+	logrus.Infof("CreateNewBackup() apiID=%s timeout=%d s", apiID, timeout.Seconds)
 
 	logrus.Infof("Calling Restic...")
-	result, err := sh("restic", "backup", "/backup-source", "-r", options.repoDir)
+	result, err := schellyhook.ExecShell("restic backup /backup-source -r " + *repoDir)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return err
 	}
 	logrus.Debugf("result: %s", result)
 	rex, _ := regexp.Compile("snapshot ([0-9a-zA-z]+) saved")
@@ -160,96 +78,146 @@ func CreateBackup(w http.ResponseWriter, r *http.Request) {
 	success := (len(id) == 2)
 	if !success {
 		logrus.Warnf("Snapshot not created. result=%s", result)
-	}
-
-	if options.postBackupCommand != "" {
-		logrus.Infof("Running post-backup command '%s'...", options.postBackupCommand)
-		result, err = execShell(options.preBackupCommand)
-		logrus.Debugf("Output: %s", result)
-		if err != nil {
-			logrus.Warnf("Failed to run post-backup command: %s", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		logrus.Debug("Post-backup command success")
-	}
-
-	if success {
-		resp := Response{
-			Id:      id[1],
-			Status:  "available",
-			Message: result,
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		err = json.NewEncoder(w).Encode(resp)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		logrus.Debugf("Response sent %s", resp)
-		logrus.Infof("Backup success")
-
 	} else {
-		logrus.Infof("Backup error")
-		http.Error(w, "Couldn't find returned id from response", http.StatusInternalServerError)
+		dataID := id[1]
+		err = saveDataID(apiID, dataID)
+		if err != nil {
+			return err
+		}
+		logrus.Infof("Backup finished")
 	}
+
+	return nil
 }
 
-func DeleteBackup(w http.ResponseWriter, r *http.Request) {
-	logrus.Debugf("DeleteBackup r=%s", r)
-	params := mux.Vars(r)
-
-	res, err0 := findBackup(params["id"])
-	if err0 != nil {
-		logrus.Debugf("Backup %s not found for removal", params["id"])
-		http.Error(w, err0.Error(), http.StatusInternalServerError)
-		return
-	}
-	if res.Id == "" {
-		http.Error(w, fmt.Sprintf("Snapshot %s not found", params["id"]), http.StatusNotFound)
-		return
-	}
-
-	logrus.Debugf("Snapshot %s found. Proceeding to deletion", params["id"])
-	result, err := sh("restic", "forget", params["id"], "-r", options.repoDir)
+//GetAllBackups returns all backups from underlaying backuper. optional for Schelly
+func (sb ResticBackuper) GetAllBackups() ([]schellyhook.SchellyResponse, error) {
+	logrus.Debugf("GetAllBackups")
+	result, err := schellyhook.ExecShell("restic snapshots --quiet -r " + *repoDir)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, err
+	}
+
+	backups := make([]schellyhook.SchellyResponse, 0)
+	lines := strings.Split(result, "\n")
+	for i, line := range lines {
+		space := regexp.MustCompile(`\s+`)
+		line = space.ReplaceAllString(line, " ")
+		cols := strings.Split(line, " ")
+		if i == 0 || len(cols) < 3 {
+			continue
+		}
+
+		dataID := cols[0]
+
+		sr := schellyhook.SchellyResponse{
+			// ID:      getAPIID(dataID),
+			DataID:  dataID,
+			Status:  "available",
+			Message: line,
+			SizeMB:  -1,
+		}
+		backups = append(backups, sr)
+	}
+
+	return backups, nil
+}
+
+//GetBackup get an specific backup along with status
+func (sb ResticBackuper) GetBackup(apiID string) (*schellyhook.SchellyResponse, error) {
+	logrus.Debugf("GetBackup apiID=%s", apiID)
+
+	dataID, err0 := getDataID(apiID)
+	if err0 != nil {
+		logrus.Debugf("BackyID not found for apiId %s. err=%s", apiID, err0)
+		return nil, nil
+	}
+
+	res, err := findBackup(apiID, dataID)
+	if err != nil {
+		return nil, nil
+	}
+
+	return res, nil
+}
+
+//DeleteBackup removes current backup from underlaying backup storage
+func (sb ResticBackuper) DeleteBackup(apiID string) error {
+	logrus.Debugf("DeleteBackup apiID=%s", apiID)
+
+	dataID, err0 := getDataID(apiID)
+	if err0 != nil {
+		logrus.Debugf("Restic backup not found for apiID %s dataID %s. err=%s", apiID, dataID, err0)
+		return err0
+	}
+
+	_, err0 = findBackup(apiID, dataID)
+	if err0 != nil {
+		logrus.Debugf("Backup apiID %s, dataID %s not found for removal", apiID, dataID)
+		return err0
+	}
+
+	logrus.Debugf("Backup apiID=%s dataID=%s found. Proceeding to deletion", apiID, dataID)
+	result, err := schellyhook.ExecShell("restic forget " + dataID + " -r " + *repoDir)
+	if err != nil {
+		return err
 	}
 	logrus.Debugf("result: %s", result)
 
 	rex, _ := regexp.Compile("removed snapshot ([0-9a-zA-z]+)")
 	id := rex.FindStringSubmatch(result)
 	if len(id) != 2 {
-		http.Error(w, "Couldn't find returned id from response", http.StatusInternalServerError)
-		return
+		return fmt.Errorf("Couldn't find returned id from response")
 	}
 
-	if id[1] != params["id"] {
-		logrus.Errorf("Returned id from forget is different from requested. %s != %s", id[1], params["id"])
-		http.Error(w, "Something went wrong", http.StatusInternalServerError)
-		return
+	if id[1] != dataID {
+		return fmt.Errorf("Returned id from forget is different from requested. %s != %s", id[1], dataID)
 	}
 
-	response := Response{
-		Id:      id[1],
-		Status:  "deleted",
-		Message: result,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	logrus.Debugf("Response sent %s", response)
+	logrus.Debugf("Delete apiID %s dataID %s successful", apiID, dataID)
+	return nil
 }
 
-func findBackup(id string) (Response, error) {
-	result, err := sh("restic", "snapshots", id, "-r", options.repoDir)
+func getDataID(apiID string) (string, error) {
+	fn := baseIDDir() + apiID
+	if _, err := os.Stat(fn); err == nil {
+		logrus.Debugf("Found api id reference for %s", apiID)
+		data, err0 := ioutil.ReadFile(fn)
+		if err0 != nil {
+			return "", err0
+		} else {
+			dataID := string(data)
+			logrus.Debugf("apiID %s <-> dataID %s", apiID, dataID)
+			return dataID, nil
+		}
+	} else {
+		return "", fmt.Errorf("dataID for apiID %s not found", apiID)
+	}
+}
+
+func saveDataID(apiID string, dataID string) error {
+	logrus.Debugf("Setting apiID %s <-> dataID %s", apiID, dataID)
+	fn := baseIDDir() + apiID
+	if _, err := os.Stat(fn); err == nil {
+		err = os.Remove(fn)
+		if err != nil {
+			return fmt.Errorf("Couldn't replace existing apiID file. err=%s", err)
+		}
+	}
+	return ioutil.WriteFile(fn, []byte(dataID), 0644)
+}
+
+func mkDirs(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return os.MkdirAll(path, os.ModePerm)
+	}
+	return nil
+}
+
+func findBackup(apiID string, dataID string) (*schellyhook.SchellyResponse, error) {
+	result, err := schellyhook.ExecShell("restic snapshots " + dataID + " -r " + *repoDir)
 	if err != nil {
-		return Response{}, err
+		return nil, err
 	}
 	logrus.Debugf("Query snapshots result: %s", result)
 
@@ -257,12 +225,18 @@ func findBackup(id string) (Response, error) {
 	id0 := rex.FindStringSubmatch(result)
 	if len(id0) != 2 {
 		logrus.Debug("Couldn't find backup id in response '%'", id0, result)
-		return Response{}, nil
+		return nil, nil
 	}
 
 	logrus.Debugf("Snapshot %s found", id0)
-	return Response{
-		Id:     id0[1],
-		Status: "available",
+	return &schellyhook.SchellyResponse{
+		ID:      id0[1],
+		DataID:  dataID,
+		Status:  "available",
+		Message: result,
 	}, nil
+}
+
+func baseIDDir() string {
+	return *repoDir + "/ids/"
 }
