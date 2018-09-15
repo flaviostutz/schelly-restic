@@ -1,5 +1,5 @@
 # schelly-restic
-This exposes the common functions of Restic with Schelly REST APIs so that it can be used as a backup backend for Schelly (https://github.com/flaviostutz/schelly#webhook-spec).
+This exposes the common functions of Restic with Schelly REST APIs so that it can be used as a backup backend for Schelly (https://github.com/flaviostutz/schelly#webhook-spec)
 
 See more at http://github.com/flaviostutz/schelly
 
